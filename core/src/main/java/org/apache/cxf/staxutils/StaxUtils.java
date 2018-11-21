@@ -29,6 +29,8 @@ import java.io.Writer;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -36,6 +38,8 @@ import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Queue;
+import java.util.Map;
+import java.util.WeakHashMap;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -125,10 +129,10 @@ public final class StaxUtils {
 
     private static final Logger LOG = LogUtils.getL7dLogger(StaxUtils.class);
 
-    private static final Queue<XMLInputFactory> NS_AWARE_INPUT_FACTORY_POOL;
-    private static final XMLInputFactory SAFE_INPUT_FACTORY;
-    private static final Queue<XMLOutputFactory> OUTPUT_FACTORY_POOL;
-    private static final XMLOutputFactory SAFE_OUTPUT_FACTORY;
+    private static final Map<ClassLoader, Queue<XMLInputFactory>> NS_AWARE_INPUT_FACTORY_POOL
+        = Collections.synchronizedMap(new WeakHashMap<ClassLoader, Queue<XMLInputFactory>>());
+    private static final Map<ClassLoader, Queue<XMLOutputFactory>> OUTPUT_FACTORY_POOL
+        = Collections.synchronizedMap(new WeakHashMap<ClassLoader, Queue<XMLOutputFactory>>());
 
     private static final String XML_NS = "http://www.w3.org/2000/xmlns/";
     private static final String[] DEF_PREFIXES = new String[] {
@@ -149,11 +153,6 @@ public final class StaxUtils {
     private static boolean allowInsecureParser;
 
     static {
-        int i = getInteger("org.apache.cxf.staxutils.pool-size", 20);
-
-        NS_AWARE_INPUT_FACTORY_POOL = new ArrayBlockingQueue<>(i);
-        OUTPUT_FACTORY_POOL = new ArrayBlockingQueue<>(i);
-
         //old names
         innerElementCountThreshold = getInteger(INNER_ELEMENT_COUNT_SYSTEM_PROP, innerElementCountThreshold);
         innerElementLevelThreshold = getInteger(INNER_ELEMENT_LEVEL_SYSTEM_PROP, innerElementLevelThreshold);
@@ -171,34 +170,6 @@ public final class StaxUtils {
         if (!StringUtils.isEmpty(s)) {
             allowInsecureParser = "1".equals(s) || Boolean.parseBoolean(s);
         }
-
-        XMLInputFactory xif = null;
-        try {
-            xif = createXMLInputFactory(true);
-            String xifClassName = xif.getClass().getName();
-            if (!xifClassName.contains("ctc.wstx") && !xifClassName.contains("xml.xlxp")
-                    && !xifClassName.contains("xml.xlxp2") && !xifClassName.contains("bea.core")) {
-                xif = null;
-            }
-        } catch (Throwable t) {
-            //ignore, can always drop down to the pooled factories
-            xif = null;
-        }
-        SAFE_INPUT_FACTORY = xif;
-
-        XMLOutputFactory xof = null;
-        try {
-            xof = XMLOutputFactory.newInstance();
-            String xofClassName = xof.getClass().getName();
-            if (!xofClassName.contains("ctc.wstx") && !xofClassName.contains("xml.xlxp")
-                && !xofClassName.contains("xml.xlxp2") && !xofClassName.contains("bea.core")) {
-                xof = null;
-            }
-        } catch (Throwable t) {
-            //ignore, can always drop down to the pooled factories
-        }
-        SAFE_OUTPUT_FACTORY = xof;
-
     }
 
     private StaxUtils() {
@@ -238,11 +209,10 @@ public final class StaxUtils {
 
     public static void setInnerElementLevelThreshold(int i) {
         innerElementLevelThreshold = i != -1 ? i : 500;
-        setProperty(SAFE_INPUT_FACTORY, "com.ctc.wstx.maxElementDepth", innerElementLevelThreshold);
     }
+
     public static void setInnerElementCountThreshold(int i) {
         innerElementCountThreshold = i != -1 ? i : 50000;
-        setProperty(SAFE_INPUT_FACTORY, "com.ctc.wstx.maxChildrenPerElement", innerElementCountThreshold);
     }
 
     /**
@@ -265,36 +235,101 @@ public final class StaxUtils {
      * Return a cached, namespace-aware, factory.
      */
     private static XMLInputFactory getXMLInputFactory() {
-        if (SAFE_INPUT_FACTORY != null) {
-            return SAFE_INPUT_FACTORY;
+
+        ClassLoader loader = getContextClassLoader();
+        if (loader == null) {
+            loader = getClassLoader(StaxUtils.class);
         }
-        XMLInputFactory f = NS_AWARE_INPUT_FACTORY_POOL.poll();
-        if (f == null) {
-            f = createXMLInputFactory(true);
+        if (loader == null) {
+            return createXMLInputFactory(true);
         }
-        return f;
+
+        Queue<XMLInputFactory> queue = NS_AWARE_INPUT_FACTORY_POOL.get(loader);
+        if (queue == null) {
+            int i = getInteger("org.apache.cxf.staxutils.pool-size", 20);
+            queue = new ArrayBlockingQueue<>(i);
+            NS_AWARE_INPUT_FACTORY_POOL.put(loader, queue);
+        }
+
+        XMLInputFactory factory = queue.poll();
+        if (factory == null) {
+            factory = createXMLInputFactory(true);
+        } else {
+            setRestrictionProperties(factory);
+        }
+        return factory;
+    }
+
+    private static ClassLoader getContextClassLoader() {
+        final SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            return AccessController.doPrivileged(new PrivilegedAction<ClassLoader>() {
+                public ClassLoader run() {
+                    return Thread.currentThread().getContextClassLoader();
+                }
+            });
+        }
+        return Thread.currentThread().getContextClassLoader();
+    }
+
+    private static ClassLoader getClassLoader(final Class<?> clazz) {
+        final SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            return AccessController.doPrivileged(new PrivilegedAction<ClassLoader>() {
+                public ClassLoader run() {
+                    return clazz.getClassLoader();
+                }
+            });
+        }
+        return clazz.getClassLoader();
     }
 
     private static void returnXMLInputFactory(XMLInputFactory factory) {
-        if (SAFE_INPUT_FACTORY != factory) {
-            NS_AWARE_INPUT_FACTORY_POOL.offer(factory);
+        ClassLoader loader = getContextClassLoader();
+        if (loader == null) {
+            loader = getClassLoader(StaxUtils.class);
+        }
+        if (loader != null) {
+            Queue<XMLInputFactory> queue = NS_AWARE_INPUT_FACTORY_POOL.get(loader);
+            if (queue != null) {
+                queue.offer(factory);
+            }
         }
     }
 
     private static XMLOutputFactory getXMLOutputFactory() {
-        if (SAFE_OUTPUT_FACTORY != null) {
-            return SAFE_OUTPUT_FACTORY;
+        ClassLoader loader = getContextClassLoader();
+        if (loader == null) {
+            loader = getClassLoader(StaxUtils.class);
         }
-        XMLOutputFactory f = OUTPUT_FACTORY_POOL.poll();
-        if (f == null) {
-            f = XMLOutputFactory.newInstance();
+        if (loader == null) {
+            return XMLOutputFactory.newInstance();
         }
-        return f;
+
+        Queue<XMLOutputFactory> queue = OUTPUT_FACTORY_POOL.get(loader);
+        if (queue == null) {
+            int i = getInteger("org.apache.cxf.staxutils.pool-size", 20);
+            queue = new ArrayBlockingQueue<>(i);
+            OUTPUT_FACTORY_POOL.put(loader, queue);
+        }
+
+        XMLOutputFactory factory = queue.poll();
+        if (factory == null) {
+            factory = XMLOutputFactory.newInstance();
+        }
+        return factory;
     }
 
     private static void returnXMLOutputFactory(XMLOutputFactory factory) {
-        if (SAFE_OUTPUT_FACTORY != factory) {
-            OUTPUT_FACTORY_POOL.offer(factory);
+        ClassLoader loader = getContextClassLoader();
+        if (loader == null) {
+            loader = getClassLoader(StaxUtils.class);
+        }
+        if (loader != null) {
+            Queue<XMLOutputFactory> queue = OUTPUT_FACTORY_POOL.get(loader);
+            if (queue != null) {
+                queue.offer(factory);
+            }
         }
     }
 
