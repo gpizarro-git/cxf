@@ -22,6 +22,7 @@ package org.apache.cxf.helpers;
 import java.io.IOException;
 import java.io.StringReader;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
@@ -54,6 +55,7 @@ import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 
 import org.apache.cxf.common.logging.LogUtils;
+import org.apache.cxf.common.util.ReflectionUtil;
 import org.apache.cxf.common.util.StringUtils;
 
 /**
@@ -66,7 +68,24 @@ public final class DOMUtils {
     private static final String XMLNAMESPACE = "xmlns";
     private static volatile Document emptyDocument;
 
+    private static final ClassValue<Method> GET_DOM_ELEMENTS_METHODS = new ClassValue<Method>() {
+        @Override
+        protected Method computeValue(Class<?> type) {
+            try {
+                return ReflectionUtil.getMethod(type, "getDomElement");
+            } catch (NoSuchMethodException e) {
+                //best effort to try, do nothing if NoSuchMethodException
+                return null;
+            }
+        }
+    };
+    private static final ClassValue<Field> GET_DOCUMENT_FRAGMENT_FIELDS = new ClassValue<Field>() {
+        @Override
+        protected Field computeValue(Class<?> type) {
+            return ReflectionUtil.getDeclaredField(type, "documentFragment");
+        }
 
+    };
 
     static {
         try {
@@ -112,22 +131,22 @@ public final class DOMUtils {
             loader = getClassLoader(DOMUtils.class);
         }
         if (loader == null) {
-            DocumentBuilderFactory f = DocumentBuilderFactory.newInstance();
-            f.setNamespaceAware(true);
-            f.setFeature(javax.xml.XMLConstants.FEATURE_SECURE_PROCESSING, true);
-            f.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-            return f.newDocumentBuilder();
+            return createDocumentBuilder();
         }
         DocumentBuilder factory = DOCUMENT_BUILDERS.get(loader);
         if (factory == null) {
-            DocumentBuilderFactory f2 = DocumentBuilderFactory.newInstance();
-            f2.setNamespaceAware(true);
-            f2.setFeature(javax.xml.XMLConstants.FEATURE_SECURE_PROCESSING, true);
-            f2.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-            factory = f2.newDocumentBuilder();
+            factory = createDocumentBuilder();
             DOCUMENT_BUILDERS.put(loader, factory);
         }
         return factory;
+    }
+
+    private static DocumentBuilder createDocumentBuilder() throws ParserConfigurationException {
+        DocumentBuilderFactory f = DocumentBuilderFactory.newInstance();
+        f.setNamespaceAware(true);
+        f.setFeature(javax.xml.XMLConstants.FEATURE_SECURE_PROCESSING, true);
+        f.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+        return f.newDocumentBuilder();
     }
 
     private static ClassLoader getContextClassLoader() {
@@ -751,18 +770,18 @@ public final class DOMUtils {
     public static Node getDomElement(Node node) {
         if (node != null && isJava9SAAJ()) {
             //java9plus hack
-            try {
-                Method method = node.getClass().getMethod("getDomElement");
-                node = (Node)method.invoke(node);
-            } catch (NoSuchMethodException e) {
-                //best effort to try, do nothing if NoSuchMethodException
-            } catch (Exception e) {
-                throw new RuntimeException(e);
+            Method method = GET_DOM_ELEMENTS_METHODS.get(node.getClass());
+            if (method != null) {
+                try {
+                    return (Node)ReflectionUtil.setAccessible(method).invoke(node);
+                } catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
+                    throw new RuntimeException(e);
+                }
             }
         }
         return node;
     }
-    
+
     /**
      * Try to get the DOM DocumentFragment from the SAAJ DocumentFragment with JAVA9 afterwards
      * @param DocumentFragment The original documentFragment we need check
@@ -771,14 +790,9 @@ public final class DOMUtils {
     public static DocumentFragment getDomDocumentFragment(DocumentFragment fragment) {
         if (fragment != null && isJava9SAAJ()) {
             //java9 plus hack
-            try {
-                Field f = fragment.getClass().getDeclaredField("documentFragment");
-                f.setAccessible(true);
-                fragment = (DocumentFragment) f.get(fragment);
-            } catch (NoSuchFieldException e) {
-                //best effort to try, do nothing if NoSuchMethodException
-            } catch (Exception e) {
-                throw new RuntimeException(e);
+            Field f = GET_DOCUMENT_FRAGMENT_FIELDS.get(fragment.getClass());
+            if (f != null) {
+                return ReflectionUtil.accessDeclaredField(f, fragment, DocumentFragment.class);
             }
         }
         return fragment;
