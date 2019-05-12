@@ -546,7 +546,7 @@ class JAXBContextInitializer extends ServiceModelVisitor {
         }
         if (refClass != null) {
             try {
-                return refClass.getConstructor(QName.class, Type.class, new Annotation[0].getClass())
+                return refClass.getConstructor(QName.class, Type.class, new Annotation[0].getClass()) //NOPMD
                     .newInstance(n, cls, new Annotation[0]);
             } catch (Throwable e) {
                 //ignore
@@ -581,7 +581,7 @@ class JAXBContextInitializer extends ServiceModelVisitor {
         String name = cls.getName().replace(".", "/");
         mv.visitTypeInsn(Opcodes.NEW, name);
         mv.visitInsn(Opcodes.DUP);
-        StringBuilder paraString = new StringBuilder("(");
+        StringBuilder paraString = new StringBuilder(32).append("(");
 
         for (Class<?> paraClass : contructor.getParameterTypes()) {
             mv.visitInsn(Opcodes.ACONST_NULL);

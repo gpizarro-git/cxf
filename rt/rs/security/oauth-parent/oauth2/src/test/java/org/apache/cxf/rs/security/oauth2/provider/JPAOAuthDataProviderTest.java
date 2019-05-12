@@ -24,44 +24,27 @@ import javax.persistence.Persistence;
 import org.junit.After;
 import org.junit.Before;
 
-import static org.junit.Assert.fail;
-
 public class JPAOAuthDataProviderTest extends AbstractOAuthDataProviderTest {
     protected EntityManagerFactory emFactory;
 
     @Before
     public void setUp() throws Exception {
-        try {
-            emFactory = Persistence.createEntityManagerFactory(getPersistenceUnitName());
-            JPAOAuthDataProvider provider = new JPAOAuthDataProvider();
-            provider.setEntityManagerFactory(emFactory);
-            initializeProvider(provider);
-            setProvider(provider);
-        } catch (Exception ex) {
-            ex.printStackTrace();
-            fail("Exception during JPA EntityManager creation.");
-        }
+        emFactory = Persistence.createEntityManagerFactory(getPersistenceUnitName());
+        JPAOAuthDataProvider provider = new JPAOAuthDataProvider();
+        provider.setEntityManagerFactory(emFactory);
+        initializeProvider(provider);
+        setProvider(provider);
     }
 
     protected String getPersistenceUnitName() {
-        return "testUnitHibernate";
+        return "test-hibernate-cxf-rt-rs-security-oauth2";
     }
 
     @After
     public void tearDown() throws Exception {
-        try {
-            super.tearDown();
-            if (emFactory != null) {
-                emFactory.close();
-            }
-        } catch (Throwable ex) {
-            ex.printStackTrace();
-        } finally {
-            try {
-                //connection.createStatement().execute("SHUTDOWN");
-            } catch (Throwable ex) {
-                ex.printStackTrace();
-            }
+        super.tearDown();
+        if (emFactory != null) {
+            emFactory.close();
         }
     }
 

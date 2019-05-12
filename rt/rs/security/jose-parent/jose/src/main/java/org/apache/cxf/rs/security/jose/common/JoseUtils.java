@@ -24,6 +24,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
 import java.util.logging.Logger;
@@ -77,12 +78,7 @@ public final class JoseUtils {
         Message message = PhaseInterceptorChain.getCurrentMessage();
         Object requestContext = message.get(JoseConstants.JOSE_CONTEXT_PROPERTY);
         Object headerContext = headers.getHeader(JoseConstants.JOSE_CONTEXT_PROPERTY);
-        if (requestContext == null && headerContext == null) {
-            return;
-        }
-        if (requestContext == null && headerContext != null
-            || requestContext != null && headerContext == null
-            || !requestContext.equals(headerContext)) {
+        if (!Objects.equals(requestContext, headerContext)) {
             LOG.warning("Invalid JOSE context property");
             throw new JoseException();
         }
@@ -144,6 +140,18 @@ public final class JoseUtils {
             LOG.info(thePrefix + " Headers: \r\n" + writer.toJson(headers));
         }
     }
+
+    public static boolean checkBooleanProperty(JoseHeaders headers, Properties props, Message m,
+                                               String propertyName) {
+        if (headers == null) {
+            return false;
+        }
+        if (props.containsKey(propertyName)) {
+            return PropertyUtils.isTrue(props.get(propertyName));
+        }
+        return MessageUtils.getContextualBoolean(m, propertyName, false);
+    }
+
     //
     // <Start> Copied from JAX-RS RT FRONTEND ResourceUtils
     //
@@ -204,17 +212,6 @@ public final class JoseUtils {
         return props;
     }
 
-    public static boolean checkBooleanProperty(JoseHeaders headers, Properties props, Message m,
-                                                String propertyName) {
-        if (headers == null) {
-            return false;
-        }
-        if (props.containsKey(propertyName)) {
-            return PropertyUtils.isTrue(props.get(propertyName));
-        }
-        return MessageUtils.getContextualBoolean(m, propertyName, false);
-    }
-    
     //
     // <End> Copied from JAX-RS RT FRONTEND ResourceUtils
     //

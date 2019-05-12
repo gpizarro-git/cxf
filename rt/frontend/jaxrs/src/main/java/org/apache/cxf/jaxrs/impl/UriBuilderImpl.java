@@ -264,7 +264,7 @@ public class UriBuilderImpl extends UriBuilder implements Cloneable {
         }
     }
     //CHECKSTYLE:OFF
-    private String substituteVarargs(URITemplate templ,
+    private String substituteVarargs(URITemplate templ, //NOPMD
                                      Map<String, Object> alreadyResolvedTs,
                                      Map<String, Object> alreadyResolvedTsPathEnc,
                                      Map<String, Object> alreadyResolvedTsEnc,
@@ -412,7 +412,7 @@ public class UriBuilderImpl extends UriBuilder implements Cloneable {
 
     // CHECKSTYLE:OFF
     @Override
-    public UriBuilder clone() {
+    public UriBuilder clone() { //NOPMD
         UriBuilderImpl builder = new UriBuilderImpl();
         builder.scheme = scheme;
         builder.userInfo = userInfo;
@@ -639,7 +639,7 @@ public class UriBuilderImpl extends UriBuilder implements Cloneable {
         } else {
             schemeSpecificPart = uri.getSchemeSpecificPart();
         }
-        if (scheme != null && host == null && (query == null || query.isEmpty()) && userInfo == null 
+        if (scheme != null && host == null && (query == null || query.isEmpty()) && userInfo == null
             && uri.getSchemeSpecificPart() != null) {
             schemeSpecificPart = uri.getSchemeSpecificPart();
         }
@@ -920,8 +920,8 @@ public class UriBuilderImpl extends UriBuilder implements Cloneable {
                     this.host = schemePair[0];
                     this.port = schemePair.length == 2 ? Integer.parseInt(schemePair[1]) : -1;
 
+                    uri = uri.substring(index);
                 }
-                uri = uri.substring(index);
             }
 
         }

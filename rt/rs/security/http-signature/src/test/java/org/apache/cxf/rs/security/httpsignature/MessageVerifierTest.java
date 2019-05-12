@@ -29,6 +29,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
+
 import org.apache.cxf.rs.security.httpsignature.exception.DifferentAlgorithmsException;
 import org.apache.cxf.rs.security.httpsignature.exception.InvalidDataToVerifySignatureException;
 import org.apache.cxf.rs.security.httpsignature.exception.InvalidSignatureException;
@@ -36,7 +39,6 @@ import org.apache.cxf.rs.security.httpsignature.exception.InvalidSignatureHeader
 import org.apache.cxf.rs.security.httpsignature.exception.MissingSignatureHeaderException;
 import org.apache.cxf.rs.security.httpsignature.exception.MultipleSignatureHeaderException;
 import org.apache.cxf.rs.security.httpsignature.provider.MockAlgorithmProvider;
-import org.apache.cxf.rs.security.httpsignature.provider.MockPublicKeyProvider;
 import org.apache.cxf.rs.security.httpsignature.provider.MockSecurityProvider;
 import org.apache.cxf.rs.security.httpsignature.utils.SignatureHeaderUtils;
 
@@ -45,7 +47,6 @@ import org.junit.Test;
 
 public class MessageVerifierTest {
     private static final String KEY_ID = "testVerifier";
-    private static final String MESSAGE_BODY = "Hello";
     private static final String METHOD = "GET";
     private static final String URI = "/test/signature";
     private static final String KEY_PAIR_GENERATOR_ALGORITHM = "RSA";
@@ -54,17 +55,17 @@ public class MessageVerifierTest {
     private static MessageVerifier messageVerifier;
 
     @BeforeClass
-    public static void setup() {
+    public static void setUp() {
 
         try {
             final KeyPair keyPair = KeyPairGenerator.getInstance(KEY_PAIR_GENERATOR_ALGORITHM)
                     .generateKeyPair();
 
-            messageVerifier = new MessageVerifier(new MockPublicKeyProvider(keyPair.getPublic()));
+            messageVerifier = new MessageVerifier(keyId -> keyPair.getPublic());
             messageVerifier.setSecurityProvider(new MockSecurityProvider());
             messageVerifier.setAlgorithmProvider(new MockAlgorithmProvider());
 
-            messageSigner = new MessageSigner(keyPair.getPrivate(), KEY_ID);
+            messageSigner = new MessageSigner(keyId -> keyPair.getPrivate(), KEY_ID);
 
         } catch (NoSuchAlgorithmException e) {
             e.printStackTrace();
@@ -72,32 +73,32 @@ public class MessageVerifierTest {
     }
 
     @Test
-    public void validUnalteredRequest() {
-        Map<String, List<String>> headers = createMockHeaders();
-        createAndAddSignature(headers, MESSAGE_BODY);
-        messageVerifier.verifyMessage(headers, METHOD, URI);
-    }
-
-    @Test
-    public void validUnalteredRequestWithoutBody() {
+    public void validUnalteredRequest() throws IOException {
         Map<String, List<String>> headers = createMockHeaders();
         createAndAddSignature(headers);
         messageVerifier.verifyMessage(headers, METHOD, URI);
     }
 
     @Test
-    public void validUnalteredRequestWithExtraHeaders() {
+    public void validUnalteredRequestWithoutBody() throws IOException {
         Map<String, List<String>> headers = createMockHeaders();
-        createAndAddSignature(headers, MESSAGE_BODY);
+        createAndAddSignature(headers);
+        messageVerifier.verifyMessage(headers, METHOD, URI);
+    }
+
+    @Test
+    public void validUnalteredRequestWithExtraHeaders() throws IOException {
+        Map<String, List<String>> headers = createMockHeaders();
+        createAndAddSignature(headers);
         headers.put("Test", Collections.singletonList("value"));
         headers.put("Test2", Collections.singletonList("value2"));
         messageVerifier.verifyMessage(headers, METHOD, URI);
     }
 
     @Test(expected = DifferentAlgorithmsException.class)
-    public void differentAlgorithmsFails() {
+    public void differentAlgorithmsFails() throws IOException {
         Map<String, List<String>> headers = createMockHeaders();
-        createAndAddSignature(headers, MESSAGE_BODY);
+        createAndAddSignature(headers);
         String signature = headers.get("Signature").get(0);
         signature = signature.replaceFirst("algorithm=\"rsa-sha256", "algorithm=\"hmac-sha256");
         headers.replace("Signature", Collections.singletonList(signature));
@@ -105,29 +106,29 @@ public class MessageVerifierTest {
     }
 
     @Test(expected = InvalidDataToVerifySignatureException.class)
-    public void invalidDataToVerifySignatureFails() {
+    public void invalidDataToVerifySignatureFails() throws IOException {
         Map<String, List<String>> headers = createMockHeaders();
-        createAndAddSignature(headers, MESSAGE_BODY);
+        createAndAddSignature(headers);
         headers.remove("Content-Length");
         messageVerifier.verifyMessage(headers, METHOD, URI);
     }
 
     @Test(expected = InvalidSignatureException.class)
-    public void invalidSignatureFails() {
+    public void invalidSignatureFails() throws IOException {
         Map<String, List<String>> headers = createMockHeaders();
-        createAndAddSignature(headers, MESSAGE_BODY);
+        createAndAddSignature(headers);
         String signature = headers.get("Signature").get(0);
-        signature = signature.replaceFirst("signature=\"[\\w][\\w]", "signature=\"AA");
+        signature = signature.replaceFirst("signature=\".{10}", "signature=\"AAAAAAAAAA");
         headers.replace("Signature", Collections.singletonList(signature));
         messageVerifier.verifyMessage(headers, METHOD, URI);
     }
 
     @Test(expected = InvalidSignatureHeaderException.class)
-    public void invalidSignatureHeaderFails() {
+    public void invalidSignatureHeaderFails() throws IOException {
         Map<String, List<String>> headers = createMockHeaders();
-        createAndAddSignature(headers, MESSAGE_BODY);
+        createAndAddSignature(headers);
         String signature = headers.get("Signature").get(0);
-        signature = signature.replaceFirst(",signature", "signature");
+        signature = signature.replaceFirst(",signature", ",signature2");
         headers.replace("Signature", Collections.singletonList(signature));
         messageVerifier.verifyMessage(headers, METHOD, URI);
     }
@@ -139,9 +140,9 @@ public class MessageVerifierTest {
     }
 
     @Test(expected = MultipleSignatureHeaderException.class)
-    public void multipleSignatureHeaderFails() {
+    public void multipleSignatureHeaderFails() throws IOException {
         Map<String, List<String>> headers = createMockHeaders();
-        createAndAddSignature(headers, MESSAGE_BODY);
+        createAndAddSignature(headers);
         String signature = headers.get("Signature").get(0);
         List<String> signatureList = new ArrayList<>(headers.get("Signature"));
         signatureList.add(signature);
@@ -149,20 +150,24 @@ public class MessageVerifierTest {
         messageVerifier.verifyMessage(headers, METHOD, URI);
     }
 
-    private static void createAndAddSignature(Map<String, List<String>> headers, String messageBody) {
-        try {
-            messageSigner.sign(headers, URI, METHOD, messageBody);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+    @Test
+    public void symmetricSignature() throws IOException, NoSuchAlgorithmException {
+        Map<String, List<String>> headers = createMockHeaders();
+
+        KeyGenerator keyGenerator = KeyGenerator.getInstance("HmacSHA256");
+        SecretKey secretKey = keyGenerator.generateKey();
+
+        MessageSigner hmacMessageSigner =
+            new MessageSigner("hmac-sha256", keyId -> secretKey, KEY_ID);
+        hmacMessageSigner.sign(headers, URI, METHOD);
+
+        MessageVerifier hmacMessageVerifier =
+            new MessageVerifier(keyId -> secretKey, null, keyId -> "hmac-sha256", Collections.emptyList());
+        hmacMessageVerifier.verifyMessage(headers, METHOD, URI);
     }
 
-    private static void createAndAddSignature(Map<String, List<String>> headers) {
-        try {
-            messageSigner.sign(headers, URI, METHOD);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+    private static void createAndAddSignature(Map<String, List<String>> headers) throws IOException {
+        messageSigner.sign(headers, URI, METHOD);
     }
 
     private static Map<String, List<String>> createMockHeaders() {

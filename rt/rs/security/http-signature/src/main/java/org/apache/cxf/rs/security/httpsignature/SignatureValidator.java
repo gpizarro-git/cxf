@@ -22,13 +22,13 @@ import java.util.List;
 import java.util.Map;
 
 import org.apache.cxf.rs.security.httpsignature.provider.AlgorithmProvider;
-import org.apache.cxf.rs.security.httpsignature.provider.PublicKeyProvider;
+import org.apache.cxf.rs.security.httpsignature.provider.KeyProvider;
 import org.apache.cxf.rs.security.httpsignature.provider.SecurityProvider;
 
 public interface SignatureValidator {
     void validate(Map<String, List<String>> messageHeaders,
                   AlgorithmProvider algorithmProvider,
-                  PublicKeyProvider publicKeyProvider,
+                  KeyProvider keyProvider,
                   SecurityProvider securityProvider,
                   String method,
                   String uri);

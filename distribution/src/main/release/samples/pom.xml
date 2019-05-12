@@ -22,7 +22,7 @@
     <groupId>org.apache.cxf.samples</groupId>
     <artifactId>cxf-samples</artifactId>
     <packaging>pom</packaging>
-    <version>3.3.1-SNAPSHOT</version>
+    <version>3.3.2-SNAPSHOT</version>
     <name>Apache CXF Samples</name>
     <description>Apache CXF Samples</description>
     <url>http://cxf.apache.org</url>
@@ -139,6 +139,7 @@
         <module>wsdl_first_rpclit</module>
         <module>wsdl_first_soap12</module>
         <module>wsdl_first_xml_wrapped</module>
+        <module>jax_rs/description_openapi_microprofile_spring</module>
     </modules>
     <dependencyManagement>
         <dependencies>

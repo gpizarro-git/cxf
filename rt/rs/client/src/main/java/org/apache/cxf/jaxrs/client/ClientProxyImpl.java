@@ -203,13 +203,9 @@ public class ClientProxyImpl extends AbstractClient implements
                         MethodHandle mh = lookup.unreflectSpecial(m, declaringClass).bindTo(o);
                         return params != null && params.length > 0 ? mh.invokeWithArguments(params) : mh.invoke();
                     } catch (Throwable t) {
-                        if (t instanceof IllegalAccessException) {
-                            try {
-                                return invokeDefaultMethodUsingPrivateLookup(declaringClass, o, m, params);
-                            } catch (final NoSuchMethodException ex) {
-                                throw new WrappedException(t);
-                            }
-                        } else {
+                        try { // try using built-in JDK 9+ API for invoking default method
+                            return invokeDefaultMethodUsingPrivateLookup(declaringClass, o, m, params);
+                        } catch (final NoSuchMethodException ex) {
                             throw new WrappedException(t);
                         }
                     }

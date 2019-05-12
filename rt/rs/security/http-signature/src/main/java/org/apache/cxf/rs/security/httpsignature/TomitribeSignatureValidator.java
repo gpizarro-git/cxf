@@ -19,6 +19,8 @@
 package org.apache.cxf.rs.security.httpsignature;
 
 import java.security.Key;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
@@ -29,7 +31,7 @@ import org.apache.cxf.rs.security.httpsignature.exception.InvalidDataToVerifySig
 import org.apache.cxf.rs.security.httpsignature.exception.InvalidSignatureException;
 import org.apache.cxf.rs.security.httpsignature.exception.InvalidSignatureHeaderException;
 import org.apache.cxf.rs.security.httpsignature.provider.AlgorithmProvider;
-import org.apache.cxf.rs.security.httpsignature.provider.PublicKeyProvider;
+import org.apache.cxf.rs.security.httpsignature.provider.KeyProvider;
 import org.apache.cxf.rs.security.httpsignature.provider.SecurityProvider;
 import org.apache.cxf.rs.security.httpsignature.utils.SignatureHeaderUtils;
 import org.tomitribe.auth.signatures.Signature;
@@ -37,11 +39,16 @@ import org.tomitribe.auth.signatures.Verifier;
 
 public class TomitribeSignatureValidator implements SignatureValidator {
     private static final Logger LOG = LogUtils.getL7dLogger(TomitribeSignatureValidator.class);
+    private final List<String> requiredHeaders;
+
+    public TomitribeSignatureValidator(List<String> requiredHeaders) {
+        this.requiredHeaders = requiredHeaders != null ? new ArrayList<>(requiredHeaders) : Collections.emptyList();
+    }
 
     @Override
     public void validate(Map<String, List<String>> messageHeaders,
                          AlgorithmProvider algorithmProvider,
-                         PublicKeyProvider publicKeyProvider,
+                         KeyProvider keyProvider,
                          SecurityProvider securityProvider,
                          String method,
                          String uri) {
@@ -54,9 +61,10 @@ public class TomitribeSignatureValidator implements SignatureValidator {
             throw new DifferentAlgorithmsException("signature algorithm from header and provided are different");
         }
 
-        Key key = publicKeyProvider.getKey(signature.getKeyId());
+        Key key = keyProvider.getKey(signature.getKeyId());
 
-        java.security.Provider provider = securityProvider.getProvider(signature.getKeyId());
+        java.security.Provider provider =
+            securityProvider != null ? securityProvider.getProvider(signature.getKeyId()) : null;
 
         runVerifier(messageHeaders, key, signature, provider, method, uri);
     }
@@ -75,13 +83,24 @@ public class TomitribeSignatureValidator implements SignatureValidator {
                              java.security.Provider provider,
                              String method,
                              String uri) {
-        Verifier verifier = new Verifier(key, signature, provider);
         LOG.fine("Starting signature validation");
         boolean success;
         try {
+            Verifier verifier = new Verifier(key, signature, provider);
             success = verifier.verify(method, uri, SignatureHeaderUtils.mapHeaders(messageHeaders));
+
+            // If HTTP GET then don't require that the digest is present
+            List<String> headers = requiredHeaders;
+            if ("GET".equals(method)) {
+                headers = new ArrayList<>(requiredHeaders);
+                headers.remove("digest");
+            }
+            if (!signature.getHeaders().containsAll(headers)) {
+                LOG.warning("Not all of the required headers are signed");
+                throw new InvalidDataToVerifySignatureException();
+            }
         } catch (Exception e) {
-            throw new InvalidDataToVerifySignatureException(e.getMessage(), e);
+            throw new InvalidDataToVerifySignatureException("Error validating the signature", e);
         }
         if (!success) {
             throw new InvalidSignatureException("signature is not valid");

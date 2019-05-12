@@ -18,6 +18,7 @@
  */
 package org.apache.cxf.ws.security.wss4j;
 
+import java.io.IOException;
 import java.lang.reflect.Method;
 import java.security.Provider;
 import java.security.cert.Certificate;
@@ -28,7 +29,9 @@ import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import javax.security.auth.callback.Callback;
 import javax.security.auth.callback.CallbackHandler;
+import javax.security.auth.callback.UnsupportedCallbackException;
 import javax.xml.namespace.QName;
 import javax.xml.soap.SOAPException;
 import javax.xml.soap.SOAPMessage;
@@ -49,6 +52,8 @@ import org.apache.cxf.binding.soap.saaj.SAAJInInterceptor;
 import org.apache.cxf.binding.soap.saaj.SAAJUtils;
 import org.apache.cxf.common.i18n.Message;
 import org.apache.cxf.common.logging.LogUtils;
+import org.apache.cxf.common.util.PropertyUtils;
+import org.apache.cxf.common.util.StringUtils;
 import org.apache.cxf.endpoint.Endpoint;
 import org.apache.cxf.helpers.CastUtils;
 import org.apache.cxf.helpers.DOMUtils;
@@ -66,6 +71,7 @@ import org.apache.wss4j.common.ConfigurationConstants;
 import org.apache.wss4j.common.cache.ReplayCache;
 import org.apache.wss4j.common.crypto.Crypto;
 import org.apache.wss4j.common.crypto.ThreadLocalSecurityProvider;
+import org.apache.wss4j.common.ext.WSPasswordCallback;
 import org.apache.wss4j.common.ext.WSSecurityException;
 import org.apache.wss4j.dom.WSConstants;
 import org.apache.wss4j.dom.WSDataRef;
@@ -295,7 +301,7 @@ public class WSS4JInInterceptor extends AbstractWSS4JInterceptor {
              *isn't available
              */
             boolean enableRevocation = reqData.isRevocationEnabled()
-                || MessageUtils.isTrue(SecurityUtils.getSecurityPropertyValue(SecurityConstants.ENABLE_REVOCATION,
+                || PropertyUtils.isTrue(SecurityUtils.getSecurityPropertyValue(SecurityConstants.ENABLE_REVOCATION,
                                        msg));
             reqData.setEnableRevocation(enableRevocation);
 
@@ -323,7 +329,7 @@ public class WSS4JInInterceptor extends AbstractWSS4JInterceptor {
                     checkSignatureConfirmation(reqData, wsResult);
                 }
 
-                checkActions(msg, reqData, wsResult.getResults(), actions, SAAJUtils.getBody(doc));
+                checkActions(msg, wsResult.getResults(), actions);
 
                 doResults(
                     msg, actor,
@@ -349,7 +355,7 @@ public class WSS4JInInterceptor extends AbstractWSS4JInterceptor {
                               body,
                               wsResult, utWithCallbacks);
                 } else {
-                    checkActions(msg, reqData, wsResult.getResults(), actions, SAAJUtils.getBody(doc));
+                    checkActions(msg, wsResult.getResults(), actions);
                     doResults(msg, actor,
                               header,
                               body,
@@ -450,10 +456,8 @@ public class WSS4JInInterceptor extends AbstractWSS4JInterceptor {
 
     protected void checkActions(
         SoapMessage msg,
-        RequestData reqData,
         List<WSSecurityEngineResult> wsResult,
-        List<Integer> actions,
-        Element body
+        List<Integer> actions
     ) throws WSSecurityException {
         if (ignoreActions) {
             // Not applicable for the WS-SecurityPolicy case
@@ -651,6 +655,33 @@ public class WSS4JInInterceptor extends AbstractWSS4JInterceptor {
                 }
                 throw sec;
             }
+        }
+
+        // Defer to SecurityConstants.SIGNATURE_PASSWORD for decryption if no callback handler is defined
+        if (cbHandler == null) {
+            String signatureUser =
+                (String)SecurityUtils.getSecurityPropertyValue(SecurityConstants.SIGNATURE_USERNAME,
+                                                               (SoapMessage)reqData.getMsgContext());
+            String password =
+                (String)SecurityUtils.getSecurityPropertyValue(SecurityConstants.SIGNATURE_PASSWORD,
+                                                       (SoapMessage)reqData.getMsgContext());
+            if (!(StringUtils.isEmpty(signatureUser) || StringUtils.isEmpty(password))) {
+                cbHandler = new CallbackHandler() {
+
+                    @Override
+                    public void handle(Callback[] callbacks)
+                        throws IOException, UnsupportedCallbackException {
+                        for (Callback c : callbacks) {
+                            WSPasswordCallback pwCallback = (WSPasswordCallback)c;
+                            if (WSPasswordCallback.DECRYPT == pwCallback.getUsage()
+                                && signatureUser.equals(pwCallback.getIdentifier())) {
+                                pwCallback.setPassword(password);
+                            }
+                        }
+                    }
+                };
+            }
+
         }
 
         Endpoint ep = ((SoapMessage)reqData.getMsgContext()).getExchange().getEndpoint();

@@ -53,7 +53,8 @@ public class SecurityConstants {
     public static final String USERNAME = "security.username";
 
     /**
-     * The user's password when a {@link CALLBACK_HANDLER} is not defined.
+     * The user's password when a {@link CALLBACK_HANDLER} is not defined. This is only used for the password
+     * in a WS-Security UsernameToken.
      */
     public static final String PASSWORD = "security.password";
 
@@ -65,6 +66,11 @@ public class SecurityConstants {
      * that key will be used.
      */
     public static final String SIGNATURE_USERNAME = "security.signature.username";
+
+    /**
+     * The user's password for signature when a {@link CALLBACK_HANDLER} is not defined.
+     */
+    public static final String SIGNATURE_PASSWORD = "security.signature.password";
 
     /**
      * The user's name for encryption. It is used as the alias name in the keystore to get the user's public

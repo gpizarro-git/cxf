@@ -18,7 +18,7 @@
  */
 package org.apache.cxf.rs.security.httpsignature;
 
-import java.security.Security;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -28,7 +28,7 @@ import org.apache.cxf.common.logging.LogUtils;
 import org.apache.cxf.rs.security.httpsignature.exception.MissingSignatureHeaderException;
 import org.apache.cxf.rs.security.httpsignature.exception.MultipleSignatureHeaderException;
 import org.apache.cxf.rs.security.httpsignature.provider.AlgorithmProvider;
-import org.apache.cxf.rs.security.httpsignature.provider.PublicKeyProvider;
+import org.apache.cxf.rs.security.httpsignature.provider.KeyProvider;
 import org.apache.cxf.rs.security.httpsignature.provider.SecurityProvider;
 import org.apache.cxf.rs.security.httpsignature.utils.DefaultSignatureConstants;
 import org.apache.cxf.rs.security.httpsignature.utils.SignatureHeaderUtils;
@@ -37,32 +37,49 @@ public class MessageVerifier {
     private static final Logger LOG = LogUtils.getL7dLogger(MessageVerifier.class);
 
     private AlgorithmProvider algorithmProvider;
-    private PublicKeyProvider publicKeyProvider;
+    private KeyProvider keyProvider;
     private SecurityProvider securityProvider;
     private final SignatureValidator signatureValidator;
 
-    public MessageVerifier(PublicKeyProvider publicKeyProvider) {
-        this(publicKeyProvider,
-            keyId -> Security.getProvider(DefaultSignatureConstants.SECURITY_PROVIDER),
-            keyId -> DefaultSignatureConstants.SIGNING_ALGORITHM);
+    public MessageVerifier(KeyProvider keyProvider) {
+        this(keyProvider, Collections.emptyList());
     }
 
-    public MessageVerifier(PublicKeyProvider publicKeyProvider,
+    public MessageVerifier(KeyProvider keyProvider, List<String> requiredHeaders) {
+        this(keyProvider,
+            null,
+            keyId -> DefaultSignatureConstants.SIGNING_ALGORITHM,
+            requiredHeaders);
+    }
+
+    public MessageVerifier(KeyProvider keyProvider,
+                           AlgorithmProvider algorithmProvider) {
+        this(keyProvider, null, algorithmProvider, Collections.emptyList());
+    }
+
+    public MessageVerifier(KeyProvider keyProvider,
                            SecurityProvider securityProvider,
                            AlgorithmProvider algorithmProvider) {
-        setPublicKeyProvider(publicKeyProvider);
-        setSecurityProvider(securityProvider);
-        setAlgorithmProvider(algorithmProvider);
-        this.signatureValidator = new TomitribeSignatureValidator();
+        this(keyProvider, securityProvider, algorithmProvider, Collections.emptyList());
     }
 
-    public final void setPublicKeyProvider(PublicKeyProvider publicKeyProvider) {
-        this.publicKeyProvider = Objects.requireNonNull(publicKeyProvider, "public key provider cannot be null");
+    public MessageVerifier(KeyProvider keyProvider,
+                           SecurityProvider securityProvider,
+                           AlgorithmProvider algorithmProvider,
+                           List<String> requiredHeaders) {
+        setkeyProvider(keyProvider);
+        setSecurityProvider(securityProvider);
+        setAlgorithmProvider(algorithmProvider);
+        this.signatureValidator = new TomitribeSignatureValidator(requiredHeaders);
+    }
+
+    public final void setkeyProvider(KeyProvider provider) {
+        this.keyProvider = Objects.requireNonNull(provider, "public key provider cannot be null");
     }
 
     public final void setSecurityProvider(SecurityProvider securityProvider) {
 
-        this.securityProvider = Objects.requireNonNull(securityProvider, "security provider cannot be null");
+        this.securityProvider = securityProvider;
     }
 
     public final void setAlgorithmProvider(AlgorithmProvider algorithmProvider) {
@@ -77,7 +94,7 @@ public class MessageVerifier {
         LOG.fine("Starting signature verification");
         signatureValidator.validate(messageHeaders,
                                     algorithmProvider,
-                                    publicKeyProvider,
+                                    keyProvider,
                                     securityProvider,
                                     method,
                                     uri);

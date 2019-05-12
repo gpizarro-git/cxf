@@ -37,7 +37,7 @@ import org.apache.cxf.io.CopyingOutputStream;
 import org.apache.cxf.io.Transferable;
 
 public final class IOUtils {
-    public static final Charset UTF8_CHARSET = Charset.forName("utf-8");
+    public static final Charset UTF8_CHARSET = java.nio.charset.StandardCharsets.UTF_8;
     public static final int DEFAULT_BUFFER_SIZE = 1024 * 4;
 
     private IOUtils() {
@@ -192,8 +192,7 @@ public final class IOUtils {
             bufferSize = avail;
         }
         final byte[] buffer = new byte[bufferSize];
-        int n = 0;
-        n = input.read(buffer);
+        int n = input.read(buffer);
         int total = 0;
         while (-1 != n) {
             if (n == 0) {

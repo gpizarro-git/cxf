@@ -25,6 +25,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.stream.Stream;
 
 import org.apache.cxf.rs.security.httpsignature.exception.DigestFailureException;
 
@@ -47,9 +48,9 @@ public final class SignatureHeaderUtils {
      * @return A map with comma-separated values
      */
     public static Map<String, String> mapHeaders(Map<String, List<String>> multivaluedMap) {
-        Map<String, String> mappedStrings = new HashMap<>();
+        Map<String, String> mappedStrings = new HashMap<>(multivaluedMap.size());
         for (Map.Entry<String, List<String>> entry : multivaluedMap.entrySet()) {
-            mappedStrings.put(entry.getKey(), concatValues(entry.getValue()));
+            mappedStrings.put(entry.getKey(), String.join(", ", entry.getValue()));
         }
         return mappedStrings;
     }
@@ -64,7 +65,11 @@ public final class SignatureHeaderUtils {
     public static String createDigestHeader(String messageBody, String digestAlgorithmName) {
         MessageDigest messageDigest = createMessageDigestWithAlgorithm(digestAlgorithmName);
         messageDigest.update(messageBody.getBytes());
-        return digestAlgorithmName + "=" + Base64.getEncoder().encodeToString(messageDigest.digest());
+        String digest = Base64.getEncoder().encodeToString(messageDigest.digest());
+
+        StringBuilder sb = new StringBuilder(digestAlgorithmName.length() + 1 + digest.length());
+        sb.append(digestAlgorithmName).append('=').append(digest);
+        return sb.toString();
     }
 
     /**
@@ -73,14 +78,12 @@ public final class SignatureHeaderUtils {
      * @return a valid MessageDigest object
      */
     public static MessageDigest createMessageDigestWithAlgorithm(String algorithmName) {
-        List<String> validDigestAlgorithms = Arrays.asList("SHA-256", "SHA-512");
         try {
-            for (String validAlgorithm : validDigestAlgorithms) {
-                if (validAlgorithm.equalsIgnoreCase(algorithmName)) {
-                    return MessageDigest.getInstance(validAlgorithm);
-                }
-            }
-            throw new NoSuchAlgorithmException("found no match in digest algorithm whitelist");
+            String foundAlgorithm = Stream.of("SHA-256", "SHA-512")
+                 .filter(s -> s.equalsIgnoreCase(algorithmName))
+                 .findAny()
+                 .orElseThrow(() -> new NoSuchAlgorithmException("found no match in digest algorithm whitelist"));
+            return MessageDigest.getInstance(foundAlgorithm);
         } catch (NoSuchAlgorithmException e) {
             throw new DigestFailureException("failed to retrieve digest from digest string", e);
         }
@@ -92,19 +95,10 @@ public final class SignatureHeaderUtils {
         if (messageHeaders.isEmpty()) {
             throw new IllegalStateException("message headers are empty");
         }
-        messageHeaders.forEach((key, list) -> Objects.requireNonNull(list));
-        messageHeaders.forEach((key, list) -> list.forEach(Objects::requireNonNull));
-    }
-
-    private static String concatValues(List<String> values) {
-        StringBuilder sb = new StringBuilder();
-        for (int x = 0; x < values.size(); x++) {
-            sb.append(values.get(x));
-            if (x != values.size() - 1) {
-                sb.append(", ");
-            }
-        }
-        return sb.toString();
+        messageHeaders.forEach((key, list) -> {
+            Objects.requireNonNull(list);
+            list.forEach(Objects::requireNonNull);
+        });
     }
 
 }

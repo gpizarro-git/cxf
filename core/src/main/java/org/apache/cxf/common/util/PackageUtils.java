@@ -75,14 +75,7 @@ public final class PackageUtils {
                 break;
             }
         }
-        StringBuilder sb = new StringBuilder();
-        for (String part : currentParts) {
-            if (sb.length() > 0) {
-                sb.append('.');
-            }
-            sb.append(part);
-        }
-        return sb.toString();
+        return String.join(".", currentParts);
     }
 
     public static String parsePackageName(String namespace, String defaultPackageName) {
@@ -168,7 +161,7 @@ public final class PackageUtils {
 
             if (i == 0 && !Character.isJavaIdentifierStart(c)) {
                 // prefix an '_' if the first char is illegal
-                newToken.append("_" + c);
+                newToken.append('_').append(c);
             } else if (!Character.isJavaIdentifierPart(c)) {
                 // replace the char with an '_' if it is illegal
                 newToken.append('_');
@@ -185,7 +178,7 @@ public final class PackageUtils {
             return null;
         }
         final List<String> parts = Arrays.asList(packageName.split("\\."));
-        Collections.reverse(parts); 
+        Collections.reverse(parts);
         return "http://" + String.join(".", parts) + '/';
     }
 

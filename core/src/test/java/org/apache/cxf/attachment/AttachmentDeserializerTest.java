@@ -375,7 +375,7 @@ public class AttachmentDeserializerTest {
 
     @Test
     public void testCXF2542() throws Exception {
-        StringBuilder buf = new StringBuilder();
+        StringBuilder buf = new StringBuilder(512);
         buf.append("------=_Part_0_2180223.1203118300920\n");
         buf.append("Content-Type: application/xop+xml; charset=UTF-8; type=\"text/xml\"\n");
         buf.append("Content-Transfer-Encoding: 8bit\n");
@@ -406,15 +406,12 @@ public class AttachmentDeserializerTest {
 
     @Test
     public void imitateAttachmentInInterceptorForMessageWithMissingBoundary() throws Exception {
-        ByteArrayInputStream inputStream;
         String contentType = "multipart/mixed;boundary=abc123";
         String data = "--abc123\r\n\r\n<Document></Document>\r\n\r\n";
 
-        Message message;
+        ByteArrayInputStream inputStream = new ByteArrayInputStream(data.getBytes());
 
-        inputStream = new ByteArrayInputStream(data.getBytes());
-
-        message = new XMLMessage(new MessageImpl());
+        Message message = new XMLMessage(new MessageImpl());
         message.put(Message.CONTENT_TYPE, contentType);
         message.setContent(InputStream.class, inputStream);
         message.put(AttachmentDeserializer.ATTACHMENT_DIRECTORY, System
@@ -428,7 +425,7 @@ public class AttachmentDeserializerTest {
                                          Collections.singletonList("multipart/mixed"));
 
         ad.initializeAttachments();
-        message.getAttachments().size();
+        assertEquals(0, message.getAttachments().size());
 
         inputStream.close();
     }

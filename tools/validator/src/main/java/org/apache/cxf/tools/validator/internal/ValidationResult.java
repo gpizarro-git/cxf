@@ -57,11 +57,11 @@ public final class ValidationResult {
     }
 
     public boolean isSuccessful() {
-        return errors.isEmpty() && warnings.size() == 0;
+        return errors.isEmpty() && warnings.isEmpty();
     }
 
     public String toString() {
-        StringBuilder sb = new StringBuilder();
+        StringBuilder sb = new StringBuilder(128);
         sb.append("\n Summary: ");
         sb.append(" Failures: ");
         sb.append(errors.size());

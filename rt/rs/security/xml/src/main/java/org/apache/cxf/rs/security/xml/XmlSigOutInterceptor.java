@@ -40,7 +40,6 @@ import org.apache.cxf.rs.security.common.CryptoLoader;
 import org.apache.cxf.rs.security.common.RSSecurityUtils;
 import org.apache.cxf.rt.security.SecurityConstants;
 import org.apache.wss4j.common.crypto.Crypto;
-import org.apache.wss4j.common.ext.WSPasswordCallback;
 import org.apache.wss4j.common.ext.WSSecurityException;
 import org.apache.xml.security.signature.XMLSignature;
 import org.apache.xml.security.transforms.Transforms;
@@ -117,8 +116,7 @@ public class XmlSigOutInterceptor extends AbstractXmlSecOutInterceptor {
             throw new Exception("User name is not available");
         }
 
-        String password =
-            RSSecurityUtils.getPassword(message, user, WSPasswordCallback.SIGNATURE, this.getClass());
+        String password = RSSecurityUtils.getSignaturePassword(message, user, this.getClass());
 
         X509Certificate[] issuerCerts = RSSecurityUtils.getCertificates(crypto, user);
 
@@ -138,7 +136,7 @@ public class XmlSigOutInterceptor extends AbstractXmlSecOutInterceptor {
             throw new WSSecurityException(WSSecurityException.ErrorCode.FAILURE, ex);
         }
 
-        String id = UUID.randomUUID().toString();
+        String id = "_" + UUID.randomUUID().toString();
         String referenceId = "#" + id;
 
         String digestAlgo = sigProps.getSignatureDigestAlgo() == null

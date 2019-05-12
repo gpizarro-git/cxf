@@ -19,36 +19,47 @@
 package org.apache.cxf.rs.security.httpsignature;
 
 import java.io.IOException;
-import java.security.PrivateKey;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import org.apache.cxf.rs.security.httpsignature.provider.KeyProvider;
 import org.apache.cxf.rs.security.httpsignature.utils.DefaultSignatureConstants;
 import org.apache.cxf.rs.security.httpsignature.utils.SignatureHeaderUtils;
 
 public class MessageSigner {
-    private final String digestAlgorithmName;
-    private SignatureCreator signatureCreator;
+    private final SignatureCreator signatureCreator;
 
     public MessageSigner(String signatureAlgorithmName,
-                         String digestAlgorithmName,
-                         PrivateKey privateKey,
+                         KeyProvider keyProvider,
                          String keyId) {
-        this.digestAlgorithmName = Objects.requireNonNull(digestAlgorithmName);
-        this.signatureCreator = new TomitribeSignatureCreator(
-                Objects.requireNonNull(signatureAlgorithmName),
-                Objects.requireNonNull(privateKey),
-                Objects.requireNonNull(keyId));
+        this(signatureAlgorithmName, keyProvider, keyId, Collections.emptyList());
     }
 
-    public MessageSigner(PrivateKey privateKey,
+    public MessageSigner(String signatureAlgorithmName,
+                         KeyProvider keyProvider,
+                         String keyId,
+                         List<String> headersToSign) {
+        this.signatureCreator = new TomitribeSignatureCreator(
+                Objects.requireNonNull(signatureAlgorithmName),
+                Objects.requireNonNull(keyProvider),
+                Objects.requireNonNull(keyId),
+                headersToSign);
+    }
+
+    public MessageSigner(KeyProvider keyProvider,
                          String keyId) {
+        this(keyProvider, keyId, Collections.emptyList());
+    }
+
+    public MessageSigner(KeyProvider keyProvider,
+                         String keyId,
+                         List<String> headersToSign) {
         this(DefaultSignatureConstants.SIGNING_ALGORITHM,
-                DefaultSignatureConstants.DIGEST_ALGORITHM,
-                privateKey,
-                keyId);
+                keyProvider,
+                keyId,
+                headersToSign);
     }
 
     public void sign(Map<String, List<String>> messageHeaders,
@@ -61,26 +72,6 @@ public class MessageSigner {
         messageHeaders.put("Signature", Collections.singletonList(signatureCreator.createSignature(messageHeaders,
                 uri,
                 method
-        )));
-    }
-
-    public void sign(Map<String, List<String>> messageHeaders,
-                     String uri,
-                     String method,
-                     String messageBody) throws IOException {
-        SignatureHeaderUtils.inspectMessageHeaders(messageHeaders);
-        Objects.requireNonNull(uri);
-        Objects.requireNonNull(method);
-        Objects.requireNonNull(messageBody);
-
-        messageHeaders.put("Digest",
-                Collections.singletonList(SignatureHeaderUtils
-                        .createDigestHeader(messageBody, digestAlgorithmName)));
-
-        messageHeaders.put("Signature",
-                Collections.singletonList(signatureCreator.createSignature(messageHeaders,
-                        uri,
-                        method
         )));
     }
 

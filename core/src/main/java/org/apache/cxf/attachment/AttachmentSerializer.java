@@ -100,7 +100,7 @@ public class AttachmentSerializer {
         // Set transport mime type
         String requestMimeType = multipartType == null ? DEFAULT_MULTIPART_TYPE : multipartType;
 
-        StringBuilder ct = new StringBuilder();
+        StringBuilder ct = new StringBuilder(32);
         ct.append(requestMimeType);
 
         // having xop set to true implies multipart/related, but just in case...
@@ -304,8 +304,7 @@ public class AttachmentSerializer {
             bufferSize = avail;
         }
         final byte[] buffer = new byte[bufferSize];
-        int n = 0;
-        n = input.read(buffer);
+        int n = input.read(buffer);
         int total = 0;
         int left = 0;
         while (-1 != n) {
